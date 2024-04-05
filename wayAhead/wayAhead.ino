@@ -28,6 +28,21 @@ String name;
 
 static const int selectButton = 6;
 static const int cycleButton = 5;
+int selectButtonState = LOW;
+int cycleButonState = LOW;
+int debounceDelay = 50;
+int lastDebounce = 0;
+
+int buttonCheck(int buttonReading, int oldState){
+  int state = oldState;
+  if(buttonReading != oldState)
+    lastDebounce = millis();
+  if(millis()-lastDebounce > debounceDelay){
+    if(buttonReading != oldState)
+      state = buttonReading;
+  }
+  return state;
+}
 
 void setup() {
   String prefix = "activity";
