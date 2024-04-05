@@ -1,6 +1,8 @@
 
 #include <SD.h>
 
+File recording;
+
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -8,7 +10,7 @@
 #define SCREEN_HEIGHT 64
 #define SCREEN_WIDTH 128
 #define SCREEN_RESET -1
-#define SCREEN_ADRESS 0x3C
+#define SCREEN_ADDRESS 0x3C
 
 Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
 
@@ -25,6 +27,7 @@ SoftwareSerial ss(gpsRX, gpsTX);
 
 #define SDCHIPSELECT 7
 String name;
+String buffer;
 
 static const int selectButton = 6;
 static const int cycleButton = 5;
@@ -44,14 +47,20 @@ int buttonCheck(int buttonReading, int oldState){
   return state;
 }
 
+void initializeRecording(String filename){
+  recording = SD.open(filename, FILE_WRITE);
+}
+
 void setup() {
+  Serial.begin(9600);
+  buffer.reserve(1024);
+  
   String prefix = "activity";
   int activityNumber = 0;
   String suffix = ".gpx";
   name = prefix + activityNumber + suffix;
-  Serial.begin(9600);
-  // put your setup code here, to run once:
-  if(!oled.begin(SCREEN_ADRESS))
+  
+  if(!oled.begin(SCREEN_ADDRESS))
     Serial.print("Screen not found!");
   if(!SD.begin(SDCHIPSELECT))
       Serial.println("SD Initialization failed");
@@ -68,5 +77,6 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-
+  selectButtonState = buttonCheck(digitalRead(selectButton), selectButtonState);
+  cycleButtonState = buttonCheck(digitalRead(cycleButton), cycleButtonState);
 }
