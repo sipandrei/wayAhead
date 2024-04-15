@@ -25,14 +25,17 @@ static const uint32_t GPSBaud = 4800;
 TinyGPSPlus gps;
 SoftwareSerial ss(gpsRX, gpsTX);
 
+String type = "cycling";
+
 #define SDCHIPSELECT 7
 String name;
 String buffer;
+int lastMillis = 0;
 
 static const int selectButton = 6;
 static const int cycleButton = 5;
 int selectButtonState = LOW;
-int cycleButonState = LOW;
+int cycleButtonState = LOW;
 int debounceDelay = 50;
 int lastDebounce = 0;
 
@@ -47,14 +50,89 @@ int buttonCheck(int buttonReading, int oldState){
   return state;
 }
 
+void addLineToBuffer(String message){
+//  unsigned long now = millis();
+//  if((now - lastMillis) >= 10){
+    buffer += message;
+    buffer += "\n";
+    //lastMillis = now;
+  //}
+}
+
+String addTimeElement(){
+  String timeElement = "\n<time>";
+  timeElement +=gps.date.year();
+  timeElement += "-";
+  timeElement +=gps.date.month();
+  timeElement += "-";
+  timeElement +=gps.date.day();
+  timeElement += "T";
+  timeElement +=gps.time.hour();
+  timeElement += ":";    
+  timeElement +=gps.time.minute();
+  timeElement += ":";
+  timeElement +=gps.time.second();
+  timeElement += "Z";
+  timeElement += "</time>";
+  return timeElement;
+}
+
+String addActivityType(){
+  String activityType = "<name>Getto GPS Ride :]</name>";
+  activityType +="\n<type>";
+  activityType += type;
+  activityType += "</type>";
+  return activityType;
+}
+
 void initializeRecording(String filename){
   recording = SD.open(filename, FILE_WRITE);
+
+  String header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx creator=\"WayAheadGettoGPS\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd\" version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\" xmlns:gpxx=\"http://www.garmin.com/xmlschemas/GpxExtensions/v3\">";
+  header += "\n<metadata>";
+  header += addTimeElement();
+  header += "\n</metadata>";
+  header +="\n<trk>";
+  header += addActivityType();
+  header += "\n<trkseg>";
+  addLineToBuffer(header);
+}
+
+void writeIfAvailable(){
+  
+  unsigned int chunkSize = recording.availableForWrite();
+  if(chunkSize && buffer.length() >= chunkSize){
+    recording.write(buffer.c_str(),chunkSize);
+    buffer.remove(0,chunkSize);
+  }
+}
+
+void finishRecording(){
+  String footer = "\n</trkseg>\n</trk>\n</gpx>";
+  addLineToBuffer(footer);
+  //afisare Saving...
+  while(buffer.length() != 0){
+    writeIfAvailable();
+  }
+}
+
+String addTrackPoint(){
+  String trackPoint = "<trkpt lat=\"";
+  trackPoint += gps.location.lat();
+  trackPoint += "\" lon=\"";
+  trackPoint += gps.location.lng();
+  trackPoint += "\">";
+  trackPoint += "\n<ele>";
+  trackPoint += gps.altitude.meters();
+  trackPoint += "</ele>";
+  trackPoint += addTimeElement();
+  trackPoint += "\n</trkpt>";
+  return trackPoint;
 }
 
 void setup() {
   Serial.begin(9600);
-  buffer.reserve(1024);
-  
+  buffer.reserve(512);  
   String prefix = "activity";
   int activityNumber = 0;
   String suffix = ".gpx";
