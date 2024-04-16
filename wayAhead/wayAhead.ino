@@ -17,6 +17,7 @@ Adafruit_SSD1306 oled(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
 #include <TinyGPS++.h>
 #include <TinyGPSPlus.h>
 #include <SoftwareSerial.h>
+#include <cmath>
 
 static const int gpsRX = 4;
 static const int gpsTX = 3;
@@ -31,6 +32,7 @@ bool oldRecordingState = false;
 int currentScreen = 1;
 float oldLat,oldLon,oldAlt;
 float lati,lon,alt;
+float distance, averageSpeed;
 
 #define SDCHIPSELECT 7
 String buffer;
@@ -78,6 +80,7 @@ String addTimeElement(){
     timeElement += ":";
     timeElement +=gps.time.second();
     timeElement += "Z";
+    }
   timeElement += "</time>";
   
   return timeElement;
@@ -93,6 +96,8 @@ String addActivityType(){
 
 void initializeRecording(String filename){
   while(!gps.location.isValid()){}
+  distance = 0;
+  averageSpeed = gps.speed.kmph();
   recording = SD.open(filename, FILE_WRITE);
 
   String header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx creator=\"WayAheadGettoGPS\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd\" version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\" xmlns:gpxx=\"http://www.garmin.com/xmlschemas/GpxExtensions/v3\">";
@@ -130,7 +135,7 @@ String addTrackPoint(float latitude, float longitude, float alti){
   trackPoint += longitude;
   trackPoint += "\">";
   trackPoint += "\n<ele>";
-  trackPoint += alti
+  trackPoint += alti;
   trackPoint += "</ele>";
   trackPoint += addTimeElement();
   trackPoint += "\n</trkpt>";
@@ -142,11 +147,12 @@ void buttonHandling(){
     switch(currentScreen/10){
       case 0:
         isRecording = true;
-        newRecording = true;
+        oldRecordingState = false;
         currentScreen = 10; //waiting for sattelites
         break;
       case 1:
         isRecording = false;
+        oldRecordingState = true;
         currentScreen = 0; //saving screen
         break;
     }
@@ -184,6 +190,37 @@ String nameMaker(){
   return name;
 }
 
+
+void updateDistance(){
+  float p2p = 2*6371*sqrt((1-cos(lati-oldLat)+cos(lati)*cos(oldLat)*(1-cos(lon-oldLon))/2)); //haversice equation
+  //float p2p = TinyGPSPlus::distanceBetween(lati,lon,oldLat,oldLon);
+  distance += p2p;
+}
+
+void updateAverageSpeed(){
+  averageSpeed += gps.speed.kmph();
+  averageSpeed /= 2;
+}
+
+void recordingHandling(){
+  if(oldRecordingState == false){
+    initializeRecording(nameMaker());
+  }
+  int now = millis();
+  if(now-lastMillis >= 2000 and gps.location.isUpdated()){
+    oldLat = lati;
+    oldLon = lon;
+    oldAlt = alt;
+    lati = gps.location.lat();
+    lon = gps.location.lng();
+    alt = gps.altitude.meters();
+    updateDistance();
+    updateAverageSpeed();
+    addTrackPoint(lati,lon,alt);
+    lastMillis = now;
+  }
+}
+
 void setup() {
   Serial.begin(9600);
   buffer.reserve(512);    
@@ -197,30 +234,16 @@ void setup() {
   ss.begin(GPSBaud);
 }
 
-void recordingHandling(float lati, float lon, float alt){
-  if(oldRecordingState == false){
-    initializeRecording(nameMaker())
-  }
-  int now = millis();
-  if(now-lastMillis >= 2000){
-    addTrackPoint(lati,lon,alt);
-    lastMillis = now;
-  }
-}
-
-void loop() {
+void loop(){
+  while(ss.available() > 0)
+    gps.encode(ss.read());
   // put your main code here, to run repeatedly:
   selectButtonState = buttonCheck(digitalRead(selectButton), selectButtonState);
   cycleButtonState = buttonCheck(digitalRead(cycleButton), cycleButtonState);
   oldRecordingState = isRecording;
   buttonHandling();
   if(isRecording){
-    if(gps.location.isUpdated() && millis()-lastMillis > 2000){
-    oldLat = lati;
-    oldLon = lon;
-    oldAlt = alt;
-    lati = gps.location.lat();
-    lon = gps.location.lng();
-    alt = gps.altitude.meters();}
+       recordingHandling(); 
   }
+  
 }
