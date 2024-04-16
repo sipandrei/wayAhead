@@ -25,10 +25,14 @@ static const uint32_t GPSBaud = 4800;
 TinyGPSPlus gps;
 SoftwareSerial ss(gpsRX, gpsTX);
 
-String type = "cycling";
+bool cycling = true;
+bool isRecording = false;
+bool oldRecordingState = false;
+int currentScreen = 1;
+float oldLat,oldLon,oldAlt;
+float lati,lon,alt;
 
 #define SDCHIPSELECT 7
-String name;
 String buffer;
 int lastMillis = 0;
 
@@ -61,31 +65,34 @@ void addLineToBuffer(String message){
 
 String addTimeElement(){
   String timeElement = "\n<time>";
-  timeElement +=gps.date.year();
-  timeElement += "-";
-  timeElement +=gps.date.month();
-  timeElement += "-";
-  timeElement +=gps.date.day();
-  timeElement += "T";
-  timeElement +=gps.time.hour();
-  timeElement += ":";    
-  timeElement +=gps.time.minute();
-  timeElement += ":";
-  timeElement +=gps.time.second();
-  timeElement += "Z";
+  if(gps.date.isValid()){
+    timeElement +=gps.date.year();
+    timeElement += "-";
+    timeElement +=gps.date.month();
+    timeElement += "-";
+    timeElement +=gps.date.day();
+    timeElement += "T";
+    timeElement +=gps.time.hour();
+    timeElement += ":";    
+    timeElement +=gps.time.minute();
+    timeElement += ":";
+    timeElement +=gps.time.second();
+    timeElement += "Z";
   timeElement += "</time>";
+  
   return timeElement;
 }
 
 String addActivityType(){
   String activityType = "<name>Getto GPS Ride :]</name>";
   activityType +="\n<type>";
-  activityType += type;
+  activityType += cycling?"cycling":"running";
   activityType += "</type>";
   return activityType;
 }
 
 void initializeRecording(String filename){
+  while(!gps.location.isValid()){}
   recording = SD.open(filename, FILE_WRITE);
 
   String header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx creator=\"WayAheadGettoGPS\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd\" version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\" xmlns:gpxx=\"http://www.garmin.com/xmlschemas/GpxExtensions/v3\">";
@@ -116,45 +123,104 @@ void finishRecording(){
   }
 }
 
-String addTrackPoint(){
+String addTrackPoint(float latitude, float longitude, float alti){
   String trackPoint = "<trkpt lat=\"";
-  trackPoint += gps.location.lat();
+  trackPoint += latitude;
   trackPoint += "\" lon=\"";
-  trackPoint += gps.location.lng();
+  trackPoint += longitude;
   trackPoint += "\">";
   trackPoint += "\n<ele>";
-  trackPoint += gps.altitude.meters();
+  trackPoint += alti
   trackPoint += "</ele>";
   trackPoint += addTimeElement();
   trackPoint += "\n</trkpt>";
   return trackPoint;
 }
 
+void buttonHandling(){
+  if(selectButtonState = 1){
+    switch(currentScreen/10){
+      case 0:
+        isRecording = true;
+        newRecording = true;
+        currentScreen = 10; //waiting for sattelites
+        break;
+      case 1:
+        isRecording = false;
+        currentScreen = 0; //saving screen
+        break;
+    }
+  }
+  if(cycleButtonState = 1){
+    switch(currentScreen/10){
+      case 0:
+        switch(currentScreen%10){
+          case 1:
+            cycling = !cycling;
+            break;
+        }
+        while(cycleButtonState = 1){}
+        break;
+      case 1:
+        if(currentScreen%10 < 3){
+          currentScreen++;
+        } else {
+          currentScreen = currentScreen/10*10+1;
+        }
+        break;
+    }
+  }
+}
+
+String nameMaker(){
+  String name;
+   int activityNumber = 0;
+   String prefix = "activity";
+   String suffix = ".gpx";
+   while(SD.exists(name)){
+    activityNumber++;
+    name = prefix + activityNumber + suffix;
+  }
+  return name;
+}
+
 void setup() {
   Serial.begin(9600);
-  buffer.reserve(512);  
-  String prefix = "activity";
-  int activityNumber = 0;
-  String suffix = ".gpx";
-  name = prefix + activityNumber + suffix;
-  
+  buffer.reserve(512);    
   if(!oled.begin(SCREEN_ADDRESS))
     Serial.print("Screen not found!");
   if(!SD.begin(SDCHIPSELECT))
       Serial.println("SD Initialization failed");
-  while(SD.exists(name)){
-    activityNumber++;
-    name = prefix + activityNumber + suffix;
-  }
-
   pinMode(selectButton, INPUT_PULLUP);
   pinMode(cycleButton, INPUT_PULLUP);
 
   ss.begin(GPSBaud);
 }
 
+void recordingHandling(float lati, float lon, float alt){
+  if(oldRecordingState == false){
+    initializeRecording(nameMaker())
+  }
+  int now = millis();
+  if(now-lastMillis >= 2000){
+    addTrackPoint(lati,lon,alt);
+    lastMillis = now;
+  }
+}
+
 void loop() {
   // put your main code here, to run repeatedly:
   selectButtonState = buttonCheck(digitalRead(selectButton), selectButtonState);
   cycleButtonState = buttonCheck(digitalRead(cycleButton), cycleButtonState);
+  oldRecordingState = isRecording;
+  buttonHandling();
+  if(isRecording){
+    if(gps.location.isUpdated() && millis()-lastMillis > 2000){
+    oldLat = lati;
+    oldLon = lon;
+    oldAlt = alt;
+    lati = gps.location.lat();
+    lon = gps.location.lng();
+    alt = gps.altitude.meters();}
+  }
 }
