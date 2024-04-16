@@ -192,7 +192,7 @@ String nameMaker(){
 
 
 void updateDistance(){
-  float p2p = 2*6371*sqrt((1-cos(lati-oldLat)+cos(lati)*cos(oldLat)*(1-cos(lon-oldLon))/2)); //haversice equation
+  float p2p = 2*6371*sqrt((1-cos(lati-oldLat)+cos(lati)*cos(oldLat)*(1-cos(lon-oldLon))/2)); //haversine equation
   //float p2p = TinyGPSPlus::distanceBetween(lati,lon,oldLat,oldLon);
   distance += p2p;
 }
@@ -243,7 +243,10 @@ void loop(){
   oldRecordingState = isRecording;
   buttonHandling();
   if(isRecording){
-       recordingHandling(); 
+   recordingHandling(); 
+  } 
+  else if(oldRecordingState == true) {
+    finishRecording();
   }
   
 }
